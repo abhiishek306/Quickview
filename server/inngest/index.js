@@ -1,6 +1,6 @@
 
 import { Inngest } from "inngest";
-import User from "../models/user";
+import User from "../models/User.js";
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
 // Define your Inngest functions here
 const synUserCreation=inngest.createFunction(

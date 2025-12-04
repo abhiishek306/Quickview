@@ -1,28 +1,18 @@
-# Root ignore rules (client + server)
-
-# Dependencies
+# Ignore dependencies and build outputs
+node_modules/
 **/node_modules/
-
-# Builds
+dist/
 **/dist/
+build/
 **/build/
+
+# Editor/OS
+.vscode/
+.DS_Store
+Thumbs.db
 
 # Env files
 .env
 .env.*
 **/.env
 **/.env.*
-
-# Logs
-*.log
-logs/
-
-# Editor/OS
-.vscode/
-.DS_Store
-Thumbs.db
-Quickview/
-node_modules/
-.vscode/
-Quickview/
-node_modules/
