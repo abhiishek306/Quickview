@@ -1,18 +1,6 @@
-# Ignore dependencies and build outputs
-node_modules/
-**/node_modules/
-dist/
-**/dist/
-build/
-**/build/
-
-# Editor/OS
-.vscode/
-.DS_Store
-Thumbs.db
-
-# Env files
 .env
-.env.*
+server/.env
+client/.env
 **/.env
+.env.*
 **/.env.*
