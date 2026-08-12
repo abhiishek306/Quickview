@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Loading from '../components/Loading';
 import { assets } from '../assets/assets';
@@ -7,6 +7,7 @@ import isoTimeFormat from '../lib/isoTimeFormat';
 import BlurCircle from '../components/BlurCircle';
 import { toast } from 'react-hot-toast';
 import { useAppContext } from '../context/AppContext';
+import { io } from 'socket.io-client';
 
 const SeatLayout = () => {
   const groupRows=[['A','B'],['C','D'],['E','F'],['G','H'],['I','J']];
@@ -15,7 +16,9 @@ const SeatLayout = () => {
   const[selectedTime,setSelectedTime]=useState(null);
   const[show,setShow]=useState(null);
   const[occupiedSeats,setOccupiedSeats]=useState([]);
+  const socketRef = useRef(null);
   const navigate=useNavigate();
+  const socketBaseUrl = (import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_BASE_URL || window.location.origin).replace(/\/api\/?$/, '');
 
   const{axios,getToken,user}=useAppContext();
   const getshow=async()=>{
@@ -108,8 +111,51 @@ const SeatLayout = () => {
   useEffect(()=>{
     if(selectedTime && selectedTime.showId){
       getOccupiedSeats()
+      setSelectedSeats([])
     }
   },[selectedTime])
+
+  useEffect(() => {
+    const socket = io(socketBaseUrl, {
+      transports: ['websocket', 'polling'],
+    });
+
+    socketRef.current = socket;
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [socketBaseUrl]);
+
+  useEffect(() => {
+    if (!socketRef.current || !selectedTime?.showId) {
+      return;
+    }
+
+    const socket = socketRef.current;
+    const roomId = selectedTime.showId;
+
+    const onSeatsUpdated = (payload) => {
+      if (!payload || payload.showId !== roomId) {
+        return;
+      }
+
+      const nextOccupiedSeats = payload.occupiedSeats || [];
+      setOccupiedSeats(nextOccupiedSeats);
+      setSelectedSeats((currentSeats) =>
+        currentSeats.filter((seat) => !nextOccupiedSeats.includes(seat))
+      );
+    };
+
+    socket.emit('join:show', roomId);
+    socket.on('seats:updated', onSeatsUpdated);
+
+    return () => {
+      socket.emit('leave:show', roomId);
+      socket.off('seats:updated', onSeatsUpdated);
+    };
+  }, [selectedTime?.showId]);
     
   return show ?  (
     <div className='flex flex-col md:flex-row px-6 md:px-16 lg:px-40 py-30 md:pt-50'>

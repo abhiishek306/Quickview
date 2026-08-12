@@ -6,6 +6,8 @@ import { useLocation } from 'react-router-dom'
 
 import Home from './pages/Home'
 import Movies from './pages/Movies'
+import Theaters from './pages/Theaters'
+import Releases from './pages/Releases'
 import Favorite from './pages/Favorite'
 import MyBookings from './pages/MyBookings'
 import SeatLayout from './pages/SeatLayout'
@@ -32,6 +34,8 @@ const App = () => {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/movies" element={<Movies />} />
+        <Route path="/theaters" element={<Theaters />} />
+        <Route path="/releases" element={<Releases />} />
         <Route path="/movies/:id" element={<MoviesDetails />} />
         <Route path="/movies/:id/:date" element={<SeatLayout />} />
         <Route path='/loading/:nextUrl' element ={<Loading/>} />
