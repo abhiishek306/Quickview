@@ -53,7 +53,6 @@ app.use(helmet());
 app.use(compression());
 app.use(attachRequestContext);
 app.use(requestLogger);
-app.use(clerkMiddleware());
 app.use('/api', apiLimiter);
 
 app.get('/health/live', (req, res) => {
@@ -94,9 +93,9 @@ app.get('/',(req,res)=>{
 });
 app.use('/api/inngest',serve({ client: inngest, functions }))
 app.use('/api/show',showRouter);
-app.use('/api/booking',bookingRouter)
-app.use('/api/admin',adminRouter);
-app.use('/api/user',userRouter);
+app.use('/api/booking', clerkMiddleware(), bookingRouter)
+app.use('/api/admin', clerkMiddleware(), adminRouter);
+app.use('/api/user', clerkMiddleware(), userRouter);
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
