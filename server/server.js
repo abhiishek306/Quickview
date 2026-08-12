@@ -29,6 +29,7 @@ const app=express();
 const httpServer = http.createServer(app);
 const port=env.PORT;
 const allowedOrigins = getAllowedOrigins();
+const isVercelRuntime = process.env.VERCEL === '1';
 
 app.set('trust proxy', 1);
 initializeSentry();
@@ -99,11 +100,15 @@ app.use('/api/user',userRouter);
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
-initializeSocket(httpServer, allowedOrigins);
+if (!isVercelRuntime) {
+    initializeSocket(httpServer, allowedOrigins);
+}
 
-httpServer.listen(port,()=>{
-    logger.info({ port }, `Server listening at http://localhost:${port}`);
-});
+if (!isVercelRuntime) {
+    httpServer.listen(port,()=>{
+        logger.info({ port }, `Server listening at http://localhost:${port}`);
+    });
+}
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received. Closing HTTP server and database connection...`);
@@ -125,5 +130,9 @@ const gracefulShutdown = async (signal) => {
     }, 10000).unref();
 };
 
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+if (!isVercelRuntime) {
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+}
+
+export default app;
