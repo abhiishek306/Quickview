@@ -2,10 +2,33 @@ import { clerkClient } from "@clerk/express";
 import Booking from "../models/Booking.js";
 import Movie from "../models/Movie.js";
 
+const getAuthUserId = (req) => {
+    if (typeof req.auth === 'function') {
+        const authResult = req.auth();
+        if (authResult?.userId) {
+            return authResult.userId;
+        }
+    }
+
+    if (req.auth?.userId) {
+        return req.auth.userId;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+        return process.env.DEV_BOOKING_USER_ID || 'dev-user';
+    }
+
+    return null;
+};
+
 
 export const getUserBookings=async(req,res)=>{
     try{
-        const user=req.auth().userId;
+        const user=getAuthUserId(req);
+
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
 
         const bookings=await Booking.find({user}).populate(
             {
@@ -27,7 +50,11 @@ export const getUserBookings=async(req,res)=>{
     export const updateFavorite=async(req,res)=>{
         try{
             const {movieId}=req.body;
-            const userId=req.auth().userId;
+                const userId=getAuthUserId(req);
+
+                if (!userId) {
+                    return res.status(401).json({ success: false, message: 'Unauthorized' });
+                }
 
 
             const user=await clerkClient.users.getUser(userId);
@@ -55,7 +82,13 @@ export const getUserBookings=async(req,res)=>{
 
       export const getFavorites=async(req,res)=>{
         try{
-            const user=await clerkClient.users.getUser(req.auth().userId);
+            const userId=getAuthUserId(req);
+
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'Unauthorized' });
+            }
+
+            const user=await clerkClient.users.getUser(userId);
             const favorites=user.privateMetadata.favorites;
 
 
