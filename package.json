@@ -1,0 +1,8 @@
+{
+  "name": "quickview",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:contention": "npm --prefix server run test:contention"
+  }
+}

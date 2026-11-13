@@ -1,0 +1,95 @@
+services:
+  mongo:
+    image: mongo:7
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --eval 'try { if (rs.status().ok === 1) quit(0); }
+          catch (error) {} rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]})'
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    volumes:
+      - mongo-test-data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-test-data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.test
+    command: ["sh", "-c", "node scripts/seedContention.mjs && node bootstrap.js"]
+    environment:
+      NODE_ENV: test
+      ENABLE_LOAD_TEST_MODE: "true"
+      LOAD_TEST_SHOW_ID: "66f000000000000000000001"
+      PORT: "3000"
+      MONGODB_URI: mongodb://mongo:27017/quickview?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      TMDB_API_KEY: test-load-token
+      STRIPE_SECRET_KEY: sk_test_load
+      STRIPE_WEBHOOK_SECRET: whsec_load
+      CLIENT_URL: http://localhost:5173
+      RATE_LIMIT_MAX: "120"
+      RATE_LIMIT_WINDOW_MS: "60000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  k6:
+    image: grafana/k6:latest
+    command: ["run", "/scripts/seat_contention.js"]
+    environment:
+      K6_BASE_URL: http://api:3000
+      K6_LOAD_TEST_SHOW_ID: "66f000000000000000000001"
+      K6_SUMMARY_PATH: /results/k6-summary.json
+    volumes:
+      - ./tests/load:/scripts:ro
+      - ./tests/load/.results:/results
+    depends_on:
+      api:
+        condition: service_healthy
+
+  verifier:
+    profiles: ["verify"]
+    build:
+      context: .
+      dockerfile: server/Dockerfile.test
+    command: ["node", "/app/tests/load/verify_invariants.js"]
+    environment:
+      NODE_ENV: test
+      LOAD_TEST_SHOW_ID: "66f000000000000000000001"
+      LOAD_TEST_SUMMARY_PATH: /results/k6-summary.json
+      MONGODB_URI: mongodb://mongo:27017/quickview?replicaSet=rs0
+      TMDB_API_KEY: test-load-token
+      STRIPE_SECRET_KEY: sk_test_load
+      STRIPE_WEBHOOK_SECRET: whsec_load
+    volumes:
+      - ./tests/load/.results:/results:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo-test-data:
+  redis-test-data:

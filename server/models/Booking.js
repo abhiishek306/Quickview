@@ -7,6 +7,9 @@ const bookingSchema = new mongoose.Schema({
     amount:{type:Number,required:true},
     bookedSeats:{type:Array,required:true},
     isPaid:{type:Boolean,default:false},
+    status:{type:String,enum:['PENDING','CONFIRMED','EXPIRED','EXPIRED_CONFLICT'],default:'PENDING'},
+    fencingToken:{type:String},
+    holdExpiresAt:{type:Date},
     paymentLink:{type:String},
 },{timestamps:true});
 

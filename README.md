@@ -27,6 +27,7 @@ Quickview is a full-stack movie ticket booking platform with a React frontend an
 
 - Node.js 18+
 - npm
+- Docker Engine with Docker Compose v2 (for `npm run test:contention`)
 - MongoDB Atlas (or local MongoDB)
 - Clerk account
 - Stripe account
@@ -58,6 +59,7 @@ Use your existing server configuration and ensure these are present:
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `CLIENT_URL` (for Stripe success/cancel redirects)
+- `REDIS_URL` (required for atomic seat reservations and Socket.IO scaling)
 
 ## Installation
 
@@ -99,6 +101,8 @@ Server sanity check:
 ```bash
 npm --prefix server run check
 ```
+
+Run the high-contention reservation test from the repository root with `npm run test:contention`. Docker Compose provisions Redis, a single-node MongoDB replica set, the test API, and k6; the runner verifies MongoDB invariants and removes the test volumes afterward. The auth and payment-confirmation bypass is enabled only when `NODE_ENV=test` and `ENABLE_LOAD_TEST_MODE=true`.
 
 ## Important notes
 

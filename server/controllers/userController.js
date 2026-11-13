@@ -14,7 +14,7 @@ const getAuthUserId = (req) => {
         return req.auth.userId;
     }
 
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV === 'development') {
         return process.env.DEV_BOOKING_USER_ID || 'dev-user';
     }
 

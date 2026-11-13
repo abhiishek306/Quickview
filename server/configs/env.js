@@ -29,6 +29,10 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === 'true'),
+  ENABLE_LOAD_TEST_MODE: z
+    .string()
+    .optional()
+    .transform((value) => value === 'true'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -40,6 +44,7 @@ if (!parsedEnv.success) {
 }
 
 export const env = parsedEnv.data;
+export const loadTestModeEnabled = env.NODE_ENV === 'test' && env.ENABLE_LOAD_TEST_MODE;
 
 export const getAllowedOrigins = () => {
   if (env.CORS_ORIGINS) {

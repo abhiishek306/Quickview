@@ -1,6 +1,9 @@
 
 import { Inngest } from "inngest";
 import User from "../models/User.js";
+import Booking from "../models/Booking.js";
+import { releaseSeatLocks } from "../services/seatLocks.js";
+import { emitSeatEvent } from "../socket/socket.js";
 export const inngest = new Inngest({ id: "movie-ticket-booking" });
 // Define your Inngest functions here
 const synUserCreation=inngest.createFunction(
@@ -42,4 +45,38 @@ const synUserUpdation=inngest.createFunction(
 }
 )
 
-export const functions = [synUserCreation,synUserDeletion,synUserUpdation];
+const expireSeatHold = inngest.createFunction(
+    { id: 'expire-seat-hold' },
+    { event: 'booking/hold.created' },
+    async ({ event, step }) => {
+        const { bookingId, showId, seatIds, userId, fencingToken } = event.data;
+        await step.sleep('wait-for-hold-expiry', '5m');
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking || booking.isPaid || booking.status === 'CONFIRMED') {
+            return { expired: false };
+        }
+
+        if (booking.status === 'PENDING') {
+            const expiredBooking = await Booking.findOneAndUpdate(
+                { _id: bookingId, status: 'PENDING', isPaid: false },
+                { $set: { status: 'EXPIRED', paymentLink: '' } },
+                { new: true },
+            );
+            if (!expiredBooking) {
+                return { expired: false };
+            }
+        } else if (booking.status !== 'EXPIRED') {
+            return { expired: false };
+        }
+
+        const releasedSeatIds = await releaseSeatLocks({ showId, seatIds, userId, fencingToken });
+        if (releasedSeatIds.length > 0) {
+            emitSeatEvent({ showId, event: 'seats:released', payload: { seatIds: releasedSeatIds } });
+        }
+
+        return { expired: true, releasedSeatIds };
+    },
+);
+
+export const functions = [synUserCreation,synUserDeletion,synUserUpdation,expireSeatHold];

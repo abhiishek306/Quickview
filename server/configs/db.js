@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { env } from "./env.js";
 import { logger } from "../services/logger.js";
 
-const resolveMongoUri = () => {
+export const resolveMongoUri = () => {
   try {
     const parsed = new URL(env.MONGODB_URI);
     const hasDbInPath = parsed.pathname && parsed.pathname !== '/';

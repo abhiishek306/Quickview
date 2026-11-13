@@ -16,6 +16,8 @@ const SeatLayout = () => {
   const[selectedTime,setSelectedTime]=useState(null);
   const[show,setShow]=useState(null);
   const[occupiedSeats,setOccupiedSeats]=useState([]);
+  const[seatLocks,setSeatLocks]=useState({});
+  const[clockNow,setClockNow]=useState(Date.now());
   const socketRef = useRef(null);
   const navigate=useNavigate();
   const socketBaseUrl = (import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_BASE_URL || window.location.origin).replace(/\/api\/?$/, '');
@@ -43,6 +45,9 @@ const SeatLayout = () => {
     if(occupiedSeats.includes(seatId)){
       return toast('Seat already occupied. Please select another seat');
     }
+    if(seatLocks[seatId]?.expiresAt > clockNow){
+      return toast('Seat is currently held. Please select another seat');
+    }
     setSelectedSeats(prev=>prev.includes(seatId) ? prev.filter(seat=>seat!==seatId) : [...prev,seatId]);
   }
  const renderSeats=(row,count=9)=>(
@@ -51,11 +56,15 @@ const SeatLayout = () => {
       {
         Array.from({length:count},(_,i)=>{
           const seatId=`${row}${i+1}`;
+          const isOccupied=occupiedSeats.includes(seatId);
+          const isHeld=seatLocks[seatId]?.expiresAt > clockNow;
           return(
             <button
               key={seatId}
               onClick={()=>handleSeatClick(seatId)}
-              className={`h-8 w-8 rounded border border-primary/60 cursor-pointer${selectedSeats.includes(seatId) ? " bg-primary text-white" : ""}${occupiedSeats.includes(seatId) ? " bg-primary text-white opacity-50" : ""}`}
+              disabled={isOccupied || isHeld}
+              aria-label={`${seatId}${isOccupied ? ', booked' : isHeld ? ', held' : ', available'}`}
+              className={`h-8 w-8 rounded border border-primary/60 cursor-pointer${selectedSeats.includes(seatId) ? " bg-primary text-white" : ""}${isOccupied ? " bg-primary text-white opacity-50" : ""}${isHeld ? " bg-amber-500/30 text-amber-100 opacity-80 cursor-not-allowed" : ""}`}
             >
               {seatId}
             </button>
@@ -71,6 +80,7 @@ const SeatLayout = () => {
     const {data}=await axios.get(`/api/booking/seats/${selectedTime.showId}`)
     if(data.success){
       setOccupiedSeats(data.occupiedSeats);
+      setSeatLocks(Object.fromEntries((data.seatLocks || []).map((lock)=>[lock.seatId,lock])));
   }
   else{
     toast.error(data.message)
@@ -107,6 +117,10 @@ const SeatLayout = () => {
 
   useEffect(()=>{
     getshow();
+  },[])
+  useEffect(()=>{
+    const timer=setInterval(()=>setClockNow(Date.now()),1000);
+    return ()=>clearInterval(timer);
   },[])
   useEffect(()=>{
     if(selectedTime && selectedTime.showId){
@@ -148,14 +162,57 @@ const SeatLayout = () => {
       );
     };
 
+    const onSeatsLocked = (payload) => {
+      if (!payload || payload.showId !== roomId) return;
+      const locks=Object.fromEntries((payload.seatIds || []).map((seatId)=>[seatId,{
+        seatId,
+        userId:payload.userId,
+        expiresAt:payload.expiresAt,
+      }]));
+      setSeatLocks((currentLocks)=>({...currentLocks,...locks}));
+      if (payload.userId !== user?.id) {
+        setSelectedSeats((currentSeats)=>currentSeats.filter((seat)=>!payload.seatIds?.includes(seat)));
+      }
+    };
+
+    const onSeatsReleased = (payload) => {
+      if (!payload || payload.showId !== roomId) return;
+      setSeatLocks((currentLocks)=>{
+        const nextLocks={...currentLocks};
+        (payload.seatIds || []).forEach((seatId)=>delete nextLocks[seatId]);
+        return nextLocks;
+      });
+    };
+
+    const onSeatsBooked = (payload) => {
+      if (!payload || payload.showId !== roomId) return;
+      const bookedSeats=payload.occupiedSeats || payload.seatIds || [];
+      setOccupiedSeats((currentSeats)=>[...new Set([...currentSeats,...bookedSeats])]);
+      setSelectedSeats((currentSeats)=>currentSeats.filter((seat)=>!bookedSeats.includes(seat)));
+      setSeatLocks((currentLocks)=>{
+        const nextLocks={...currentLocks};
+        bookedSeats.forEach((seatId)=>delete nextLocks[seatId]);
+        return nextLocks;
+      });
+    };
+
     socket.emit('join:show', roomId);
     socket.on('seats:updated', onSeatsUpdated);
+    socket.on('seats:locked', onSeatsLocked);
+    socket.on('seats:released', onSeatsReleased);
+    socket.on('seats:booked', onSeatsBooked);
 
     return () => {
       socket.emit('leave:show', roomId);
       socket.off('seats:updated', onSeatsUpdated);
+      socket.off('seats:locked', onSeatsLocked);
+      socket.off('seats:released', onSeatsReleased);
+      socket.off('seats:booked', onSeatsBooked);
     };
-  }, [selectedTime?.showId]);
+  }, [selectedTime?.showId,user?.id]);
+
+  const mySeatLocks=Object.values(seatLocks).filter((lock)=>lock.userId===user?.id && lock.expiresAt>clockNow);
+  const holdSeconds=Math.max(0,Math.ceil((Math.min(...mySeatLocks.map((lock)=>lock.expiresAt))-clockNow)/1000));
     
   return show ?  (
     <div className='flex flex-col md:flex-row px-6 md:px-16 lg:px-40 py-30 md:pt-50'>
@@ -176,6 +233,7 @@ const SeatLayout = () => {
   <h1 className='text-2xl font-semibold mb-4'>Select Your Seat</h1>
   <img src={assets.screenImage} alt="" />
   <p className='text-gray-400 text-sm mb-6'>SCREEN SIDE</p>
+  {mySeatLocks.length>0 && <p className='text-amber-300 text-sm mb-2'>Your hold: {String(Math.floor(holdSeconds/60)).padStart(2,'0')}:{String(holdSeconds%60).padStart(2,'0')}</p>}
   <div className='flex flex-col items-center mt-10 text-xs text-gray-300'>
     <div className='grid grid-cols-2 md:grid-cols-1 gap-8 md:gap-2 mb-6'>
       {groupRows[0].map(row=>renderSeats(row))}

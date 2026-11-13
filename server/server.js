@@ -15,12 +15,12 @@ import bookingRouter from './routes/bookingRoutes.js';
 import adminRouter from './routes/AdminRoutes.js';
 import userRouter from './routes/userRoutes.js';
 import { stripeWebhooks } from './controllers/stripeWebhook.js';
-import { env, getAllowedOrigins } from './configs/env.js';
+import { env, getAllowedOrigins, loadTestModeEnabled } from './configs/env.js';
 import { attachRequestContext } from './middleware/requestContext.js';
 import { globalErrorHandler, notFoundHandler } from './middleware/errorHandlers.js';
 import { initializeSocket } from './socket/socket.js';
 import { requestLogger, logger } from './services/logger.js';
-import { initializeRedis, closeRedis } from './services/redis.js';
+import { getRedisClient, initializeRedis, closeRedis } from './services/redis.js';
 import { initializeSentry } from './monitoring/sentry.js';
 
 dotenv.config({ path: new URL('./.env', import.meta.url) });
@@ -42,6 +42,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again shortly.' },
+    skip: (req) => loadTestModeEnabled && req.get('x-load-test-run') === 'true',
 });
 
 // Stripe webhook must receive raw body and POST only
@@ -60,26 +61,31 @@ app.get('/health/live', (req, res) => {
 });
 
 app.get('/health/ready', (req, res) => {
+    const isRedisReady = Boolean(getRedisClient());
     if (env.SKIP_DB_CONNECT) {
-        return res.status(200).json({
-            success: true,
+        const isReady = isRedisReady;
+        return res.status(isReady ? 200 : 503).json({
+            success: isReady,
             service: 'quickview-api',
-            status: 'ready',
+            status: isReady ? 'ready' : 'degraded',
             checks: {
                 mongodb: 'skipped',
+                redis: isRedisReady ? 'connected' : 'disconnected',
             },
         });
     }
 
     const isMongoReady = mongoose.connection.readyState === 1;
-    const statusCode = isMongoReady ? 200 : 503;
+    const isReady = isMongoReady && isRedisReady;
+    const statusCode = isReady ? 200 : 503;
 
     res.status(statusCode).json({
-        success: isMongoReady,
+        success: isReady,
         service: 'quickview-api',
-        status: isMongoReady ? 'ready' : 'degraded',
+        status: isReady ? 'ready' : 'degraded',
         checks: {
             mongodb: isMongoReady ? 'connected' : 'disconnected',
+            redis: isRedisReady ? 'connected' : 'disconnected',
         },
     });
 });
@@ -93,14 +99,18 @@ app.get('/',(req,res)=>{
 });
 app.use('/api/inngest',serve({ client: inngest, functions }))
 app.use('/api/show',showRouter);
-app.use('/api/booking', clerkMiddleware(), bookingRouter)
+if (loadTestModeEnabled) {
+    app.use('/api/booking', bookingRouter);
+} else {
+    app.use('/api/booking', clerkMiddleware(), bookingRouter);
+}
 app.use('/api/admin', clerkMiddleware(), adminRouter);
 app.use('/api/user', clerkMiddleware(), userRouter);
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
 if (!isVercelRuntime) {
-    initializeSocket(httpServer, allowedOrigins);
+    await initializeSocket(httpServer, allowedOrigins);
 }
 
 if (!isVercelRuntime) {
